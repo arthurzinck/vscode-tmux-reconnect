@@ -1,0 +1,94 @@
+{
+  "name": "tmux-reconnect",
+  "displayName": "Tmux Reconnect",
+  "description": "Automatically re-attaches every open tmux session in its own terminal when VS Code connects to a remote.",
+  "version": "0.1.0",
+  "publisher": "z3k",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/arthurzinck/vscode-tmux-reconnect.git"
+  },
+  "bugs": {
+    "url": "https://github.com/arthurzinck/vscode-tmux-reconnect/issues"
+  },
+  "homepage": "https://github.com/arthurzinck/vscode-tmux-reconnect#readme",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "tmux",
+    "remote",
+    "ssh",
+    "terminal",
+    "session"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "tmuxReconnect.reconnectAll",
+        "title": "Tmux: Reconnect all sessions"
+      },
+      {
+        "command": "tmuxReconnect.newSession",
+        "title": "Tmux: New session"
+      },
+      {
+        "command": "tmuxReconnect.killSession",
+        "title": "Tmux: Kill session"
+      }
+    ],
+    "terminalProfiles": [
+      {
+        "id": "tmuxReconnect.newSessionProfile",
+        "title": "New tmux session",
+        "icon": "$(server-process)"
+      }
+    ],
+    "configuration": {
+      "title": "Tmux Reconnect",
+      "properties": {
+        "tmuxReconnect.autoReconnect": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically re-attach tmux sessions when a remote window opens."
+        },
+        "tmuxReconnect.localToo": {
+          "type": "boolean",
+          "default": false,
+          "description": "Also run when the window is local (not connected to a remote)."
+        },
+        "tmuxReconnect.tmuxPath": {
+          "type": "string",
+          "default": "tmux",
+          "description": "Path to the tmux binary on the host."
+        },
+        "tmuxReconnect.execAttach": {
+          "type": "boolean",
+          "default": true,
+          "description": "Use 'exec tmux attach' so closing tmux also closes the terminal."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.4.0"
+  }
+}
