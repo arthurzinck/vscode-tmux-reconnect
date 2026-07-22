@@ -16,6 +16,7 @@ export function activate(context: vscode.ExtensionContext): void {
       reconnectAll({ manual: true })
     ),
     vscode.commands.registerCommand('tmuxReconnect.newSession', () => newSession()),
+    vscode.commands.registerCommand('tmuxReconnect.renameSession', () => renameSession()),
     vscode.commands.registerCommand('tmuxReconnect.killSession', () => killSession()),
     vscode.window.registerTerminalProfileProvider('tmuxReconnect.newSessionProfile', {
       provideTerminalProfile: () => newSessionProfile()
@@ -206,6 +207,92 @@ async function killSession(): Promise<void> {
     .forEach((t) => t.dispose());
 
   void vscode.window.showInformationMessage(`Tmux Reconnect: killed session "${picked}".`);
+}
+
+/**
+ * Renames a tmux session and its VS Code terminal together, keeping the two in
+ * sync. Targets the active tmux terminal's session when there is one, otherwise
+ * asks which session to rename.
+ */
+async function renameSession(): Promise<void> {
+  const { tmuxPath } = readConfig();
+
+  let sessions: string[];
+  try {
+    sessions = await listSessions(tmuxPath);
+  } catch (err) {
+    void vscode.window.showErrorMessage(`Tmux Reconnect: ${asMessage(err)}`);
+    return;
+  }
+
+  if (sessions.length === 0) {
+    void vscode.window.showInformationMessage('Tmux Reconnect: no tmux sessions to rename.');
+    return;
+  }
+
+  // Prefer the session behind the currently focused terminal.
+  const active = sessionOfTerminal(vscode.window.activeTerminal);
+  let current = active && sessions.includes(active) ? active : undefined;
+  if (current === undefined) {
+    current = await vscode.window.showQuickPick(sessions, {
+      placeHolder: 'Select a tmux session to rename'
+    });
+    if (current === undefined) {
+      return; // user cancelled
+    }
+  }
+
+  const newName = await vscode.window.showInputBox({
+    prompt: `New name for tmux session "${current}"`,
+    value: current,
+    validateInput: (value) => {
+      const trimmed = value.trim();
+      if (trimmed.length === 0) {
+        return 'Session name cannot be empty.';
+      }
+      if (/[.:]/.test(trimmed)) {
+        return 'Session name cannot contain "." or ":".';
+      }
+      if (trimmed !== current && sessions.includes(trimmed)) {
+        return `A session named "${trimmed}" already exists.`;
+      }
+      return undefined;
+    }
+  });
+
+  if (newName === undefined) {
+    return; // user cancelled
+  }
+  const renamed = newName.trim();
+  if (renamed === current) {
+    return; // nothing to do
+  }
+
+  try {
+    await execAsync(`${tmuxPath} rename-session -t ${shellQuote(current)} ${shellQuote(renamed)}`);
+  } catch (err) {
+    void vscode.window.showErrorMessage(`Tmux Reconnect: could not rename session — ${asMessage(err)}`);
+    return;
+  }
+
+  // Rename the VS Code terminal that owns this session, if one is open.
+  const terminal = vscode.window.terminals.find((t) => t.name === terminalName(current));
+  if (terminal) {
+    terminal.show(false);
+    await vscode.commands.executeCommand('workbench.action.terminal.renameWithArg', {
+      name: terminalName(renamed)
+    });
+  }
+
+  void vscode.window.showInformationMessage(`Tmux Reconnect: renamed "${current}" to "${renamed}".`);
+}
+
+/** Returns the tmux session a terminal is attached to, if this extension owns it. */
+function sessionOfTerminal(terminal: vscode.Terminal | undefined): string | undefined {
+  if (terminal && terminal.name.startsWith(TERMINAL_PREFIX)) {
+    return terminal.name.slice(TERMINAL_PREFIX.length);
+  }
+  return undefined;
 }
 
 /** Creates a terminal attached to the given session and returns it. */

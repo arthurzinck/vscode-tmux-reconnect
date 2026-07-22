@@ -19,6 +19,7 @@ Run these from the Command Palette (`Ctrl/Cmd+Shift+P`):
 | --- | --- |
 | `Tmux: Reconnect all sessions` | Attach any sessions that aren't open yet. |
 | `Tmux: New session` | Prompt for a name, create a detached session, and attach it. |
+| `Tmux: Rename session` | Rename the session (defaults to the active terminal's) and its terminal tab together. |
 | `Tmux: Kill session` | Pick a session, confirm, kill it, and close its terminal. |
 
 ## Settings

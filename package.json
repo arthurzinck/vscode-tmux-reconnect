@@ -44,6 +44,10 @@
         "title": "Tmux: New session"
       },
       {
+        "command": "tmuxReconnect.renameSession",
+        "title": "Tmux: Rename session"
+      },
+      {
         "command": "tmuxReconnect.killSession",
         "title": "Tmux: Kill session"
       }
