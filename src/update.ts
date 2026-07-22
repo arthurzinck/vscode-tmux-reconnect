@@ -10,17 +10,26 @@ const REPO = 'arthurzinck/vscode-tmux-reconnect';
 /** Required by the GitHub API; also identifies the client. */
 const USER_AGENT = 'vscode-tmux-reconnect';
 
-/** Keys used in the extension's global state. */
-const LAST_CHECK_KEY = 'tmuxReconnect.lastUpdateCheck';
+/** Key used in the extension's global state. */
 const SKIP_VERSION_KEY = 'tmuxReconnect.skipVersion';
 
-/** Only hit the network once per day. */
+/** Re-check interval for windows that stay open. */
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 interface GithubRelease {
   tag_name: string;
   html_url: string;
   assets: Array<{ name: string; browser_download_url: string }>;
+}
+
+/**
+ * Runs an update check now (on every VS Code launch) and then once a day for as
+ * long as the window stays open.
+ */
+export function scheduleUpdateChecks(context: vscode.ExtensionContext): void {
+  void checkForUpdates(context);
+  const timer = setInterval(() => void checkForUpdates(context), CHECK_INTERVAL_MS);
+  context.subscriptions.push({ dispose: () => clearInterval(timer) });
 }
 
 /**
@@ -33,16 +42,9 @@ export async function checkForUpdates(context: vscode.ExtensionContext): Promise
     return;
   }
 
-  // Throttle to once per day.
-  const lastCheck = context.globalState.get<number>(LAST_CHECK_KEY, 0);
-  if (Date.now() - lastCheck < CHECK_INTERVAL_MS) {
-    return;
-  }
-
   let release: GithubRelease;
   try {
     release = await fetchLatestRelease();
-    await context.globalState.update(LAST_CHECK_KEY, Date.now());
   } catch {
     return; // offline, rate-limited, etc. — stay quiet
   }
