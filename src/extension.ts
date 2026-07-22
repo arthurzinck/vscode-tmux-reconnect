@@ -45,7 +45,7 @@ interface ReconnectOptions {
 }
 
 async function reconnectAll({ manual }: ReconnectOptions): Promise<void> {
-  const { tmuxPath, execAttach } = readConfig();
+  const { tmuxPath } = readConfig();
 
   let sessions: string[];
   try {
@@ -72,7 +72,7 @@ async function reconnectAll({ manual }: ReconnectOptions): Promise<void> {
     if (openNames.has(terminalName(session))) {
       continue;
     }
-    attachTerminal(session, tmuxPath, execAttach);
+    attachTerminal(session, tmuxPath);
     attached++;
   }
 
@@ -85,13 +85,13 @@ async function reconnectAll({ manual }: ReconnectOptions): Promise<void> {
 
 /** Prompts for a name, creates a detached tmux session, and attaches it in a terminal. */
 async function newSession(): Promise<void> {
-  const { tmuxPath, execAttach } = readConfig();
+  const { tmuxPath } = readConfig();
 
   const session = await promptNewSession(tmuxPath);
   if (session === undefined) {
     return; // cancelled or failed (already surfaced)
   }
-  attachTerminal(session, tmuxPath, execAttach).show(false);
+  attachTerminal(session, tmuxPath).show(false);
 }
 
 /**
@@ -106,8 +106,7 @@ async function newSessionProfile(): Promise<vscode.TerminalProfile | undefined> 
     return undefined; // cancelled or failed (already surfaced)
   }
 
-  // 'exec' semantics come free here: the terminal's root process is tmux itself,
-  // so quitting tmux closes the terminal regardless of the execAttach setting.
+  // Same shape as attachTerminal(), returned as a profile for the '+' dropdown.
   return new vscode.TerminalProfile({
     name: terminalName(session),
     iconPath: new vscode.ThemeIcon(TMUX_ICON),
@@ -219,7 +218,7 @@ async function killSession(): Promise<void> {
  * asks which session to rename.
  */
 async function renameSession(): Promise<void> {
-  const { tmuxPath, execAttach } = readConfig();
+  const { tmuxPath } = readConfig();
 
   let sessions: string[];
   try {
@@ -291,7 +290,7 @@ async function renameSession(): Promise<void> {
   if (terminal) {
     const wasActive = vscode.window.activeTerminal === terminal;
     terminal.dispose();
-    attachTerminal(renamed, tmuxPath, execAttach).show(!wasActive);
+    attachTerminal(renamed, tmuxPath).show(!wasActive);
   }
 
   void vscode.window.showInformationMessage(`Tmux Reconnect: renamed "${current}" to "${renamed}".`);
@@ -305,15 +304,18 @@ function sessionOfTerminal(terminal: vscode.Terminal | undefined): string | unde
   return undefined;
 }
 
-/** Creates a terminal attached to the given session and returns it. */
-function attachTerminal(session: string, tmuxPath: string, execAttach: boolean): vscode.Terminal {
-  const terminal = vscode.window.createTerminal({
+/**
+ * Creates a terminal whose root process IS `tmux attach`, not a shell running it.
+ * This survives VS Code's persistent-session restore: on window reload VS Code
+ * relaunches tmux attach instead of dropping the user into a bare shell.
+ */
+function attachTerminal(session: string, tmuxPath: string): vscode.Terminal {
+  return vscode.window.createTerminal({
     name: terminalName(session),
-    iconPath: new vscode.ThemeIcon(TMUX_ICON)
+    iconPath: new vscode.ThemeIcon(TMUX_ICON),
+    shellPath: tmuxPath,
+    shellArgs: ['attach-session', '-t', session]
   });
-  const attachCmd = `${execAttach ? 'exec ' : ''}${tmuxPath} attach-session -t ${shellQuote(session)}`;
-  terminal.sendText(attachCmd, true);
-  return terminal;
 }
 
 /** Returns the list of tmux session names on the host, or [] when no server runs. */
@@ -339,11 +341,10 @@ async function listSessions(tmuxPath: string): Promise<string[]> {
   }
 }
 
-function readConfig(): { tmuxPath: string; execAttach: boolean } {
+function readConfig(): { tmuxPath: string } {
   const config = vscode.workspace.getConfiguration('tmuxReconnect');
   return {
-    tmuxPath: config.get<string>('tmuxPath', 'tmux'),
-    execAttach: config.get<boolean>('execAttach', true)
+    tmuxPath: config.get<string>('tmuxPath', 'tmux')
   };
 }
 

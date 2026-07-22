@@ -30,7 +30,6 @@ Run these from the Command Palette (`Ctrl/Cmd+Shift+P`):
 | `tmuxReconnect.localToo` | `false` | Also run in local (non-remote) windows. |
 | `tmuxReconnect.checkForUpdates` | `true` | Check GitHub Releases at each launch (and every 24h) and offer to install a newer `.vsix`. |
 | `tmuxReconnect.tmuxPath` | `tmux` | Path to the `tmux` binary on the host. |
-| `tmuxReconnect.execAttach` | `true` | Use `exec tmux attach` so quitting tmux closes the terminal. |
 
 ## Why it runs on the remote
 

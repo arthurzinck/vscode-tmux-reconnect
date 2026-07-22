@@ -81,11 +81,6 @@
           "type": "string",
           "default": "tmux",
           "description": "Path to the tmux binary on the host."
-        },
-        "tmuxReconnect.execAttach": {
-          "type": "boolean",
-          "default": true,
-          "description": "Use 'exec tmux attach' so closing tmux also closes the terminal."
         }
       }
     }
