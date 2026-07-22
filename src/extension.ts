@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { checkForUpdates } from './update';
 
 const execAsync = promisify(exec);
 
@@ -30,6 +31,9 @@ export function activate(context: vscode.ExtensionContext): void {
     // Fire and forget; failures are surfaced to the user inside reconnectAll.
     void reconnectAll({ manual: false });
   }
+
+  // Check GitHub for a newer release (throttled, silent on failure).
+  void checkForUpdates(context);
 }
 
 export function deactivate(): void {

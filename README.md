@@ -28,6 +28,7 @@ Run these from the Command Palette (`Ctrl/Cmd+Shift+P`):
 | --- | --- | --- |
 | `tmuxReconnect.autoReconnect` | `true` | Attach sessions automatically when a remote window opens. |
 | `tmuxReconnect.localToo` | `false` | Also run in local (non-remote) windows. |
+| `tmuxReconnect.checkForUpdates` | `true` | Check GitHub Releases daily and offer to install a newer `.vsix`. |
 | `tmuxReconnect.tmuxPath` | `tmux` | Path to the `tmux` binary on the host. |
 | `tmuxReconnect.execAttach` | `true` | Use `exec tmux attach` so quitting tmux closes the terminal. |
 
