@@ -2,7 +2,7 @@
   "name": "tmux-reconnect",
   "displayName": "Tmux Reconnect",
   "description": "Automatically re-attaches every open tmux session in its own terminal when VS Code connects to a remote.",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "publisher": "z3k",
   "license": "MIT",
   "repository": {
