@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import { checkForUpdates } from './update';
+import { scheduleUpdateChecks } from './update';
 
 const execAsync = promisify(exec);
 
@@ -32,8 +32,8 @@ export function activate(context: vscode.ExtensionContext): void {
     void reconnectAll({ manual: false });
   }
 
-  // Check GitHub for a newer release (throttled, silent on failure).
-  void checkForUpdates(context);
+  // Check GitHub for a newer release now and every 24h (silent on failure).
+  scheduleUpdateChecks(context);
 }
 
 export function deactivate(): void {
@@ -219,7 +219,7 @@ async function killSession(): Promise<void> {
  * asks which session to rename.
  */
 async function renameSession(): Promise<void> {
-  const { tmuxPath } = readConfig();
+  const { tmuxPath, execAttach } = readConfig();
 
   let sessions: string[];
   try {
@@ -279,13 +279,19 @@ async function renameSession(): Promise<void> {
     return;
   }
 
-  // Rename the VS Code terminal that owns this session, if one is open.
-  const terminal = vscode.window.terminals.find((t) => t.name === terminalName(current));
+  // VS Code offers no reliable API to rename an existing terminal, so re-open the
+  // tab instead: close the old one and attach a fresh terminal to the renamed
+  // session. The tmux session persists, so its content is redrawn on re-attach.
+  const terminal =
+    vscode.window.terminals.find((t) => t.name === terminalName(current)) ??
+    (sessionOfTerminal(vscode.window.activeTerminal) === current
+      ? vscode.window.activeTerminal
+      : undefined);
+
   if (terminal) {
-    terminal.show(false);
-    await vscode.commands.executeCommand('workbench.action.terminal.renameWithArg', {
-      name: terminalName(renamed)
-    });
+    const wasActive = vscode.window.activeTerminal === terminal;
+    terminal.dispose();
+    attachTerminal(renamed, tmuxPath, execAttach).show(!wasActive);
   }
 
   void vscode.window.showInformationMessage(`Tmux Reconnect: renamed "${current}" to "${renamed}".`);
