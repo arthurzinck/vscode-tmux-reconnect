@@ -8,8 +8,10 @@ dropped SSH connection or a window reload never loses your terminals.
 - **On remote connect**, it lists the tmux sessions running on the host and
   opens one integrated terminal per session, each attached with
   `tmux attach-session -t <name>`.
-- Terminals are named `tmux: <session>`; sessions that already have a terminal
-  open are skipped, so re-running never duplicates them.
+- Terminals are named `tmux <n>: <session>` (e.g. `tmux 3: Library`), where `<n>`
+  is a stable slot number shown in the tab so you can see which `Cmd/Alt+N`
+  shortcut focuses it. Sessions that already have a terminal open are skipped, so
+  re-running never duplicates them.
 
 ## Commands
 
@@ -24,12 +26,16 @@ Run these from the Command Palette (`Ctrl/Cmd+Shift+P`):
 
 ## Keyboard shortcuts
 
-While a terminal is focused, jump straight to the Nth tmux terminal:
+While a terminal is focused, jump straight to the tmux terminal whose slot number
+`<n>` is shown in its tab (`tmux <n>: <session>`):
 
 | Shortcut (macOS) | Shortcut (Linux/Windows) | Action |
 | --- | --- | --- |
-| `Cmd+1` … `Cmd+9` | `Alt+1` … `Alt+9` | Focus the 1st … 9th tmux terminal. |
-| `Cmd+0` | `Alt+0` | Focus the 10th tmux terminal. |
+| `Cmd+1` … `Cmd+9` | `Alt+1` … `Alt+9` | Focus tmux terminal 1 … 9. |
+| `Cmd+0` | `Alt+0` | Focus tmux terminal 10. |
+
+The mapping is stable: closing a terminal in the middle does not renumber the
+others, and renaming a session keeps its slot.
 
 The bindings are guarded by `terminalFocus`, so `Cmd+1`…`Cmd+9` keep their usual
 editor-group behaviour when a terminal is not focused.

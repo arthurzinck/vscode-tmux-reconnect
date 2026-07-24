@@ -5,8 +5,13 @@ import { scheduleUpdateChecks } from './update';
 
 const execAsync = promisify(exec);
 
-/** Prefix used to name and recognize terminals this extension owns. */
-const TERMINAL_PREFIX = 'tmux: ';
+/**
+ * Terminal name format: "tmux <slot>: <session>", e.g. "tmux 3: Library". The
+ * slot is a stable 1-based number shown in the tab so it is obvious which
+ * Cmd/Alt+N shortcut focuses it. Session names never contain ':' (forbidden at
+ * creation), so the trailing group is unambiguous.
+ */
+const TERMINAL_RE = /^tmux (\d+): (.+)$/s;
 
 /** Codicon id shown on every tmux terminal and the '+' dropdown entry. */
 const TMUX_ICON = 'server-process';
@@ -68,14 +73,19 @@ async function reconnectAll({ manual }: ReconnectOptions): Promise<void> {
   }
 
   // Skip sessions that already have a terminal open from a previous run.
-  const openNames = new Set(vscode.window.terminals.map((t) => t.name));
+  const openSessions = new Set(
+    vscode.window.terminals.map(sessionOfTerminal).filter((s): s is string => s !== undefined)
+  );
+  const used = usedSlots();
 
   let attached = 0;
   for (const session of sessions) {
-    if (openNames.has(terminalName(session))) {
+    if (openSessions.has(session)) {
       continue;
     }
-    attachTerminal(session, tmuxPath);
+    const slot = firstFreeSlot(used);
+    used.add(slot);
+    attachTerminal(session, tmuxPath, slot);
     attached++;
   }
 
@@ -94,7 +104,7 @@ async function newSession(): Promise<void> {
   if (session === undefined) {
     return; // cancelled or failed (already surfaced)
   }
-  attachTerminal(session, tmuxPath).show(false);
+  attachTerminal(session, tmuxPath, firstFreeSlot()).show(false);
 }
 
 /**
@@ -111,7 +121,7 @@ async function newSessionProfile(): Promise<vscode.TerminalProfile | undefined> 
 
   // Same shape as attachTerminal(), returned as a profile for the '+' dropdown.
   return new vscode.TerminalProfile({
-    name: terminalName(session),
+    name: terminalName(firstFreeSlot(), session),
     iconPath: new vscode.ThemeIcon(TMUX_ICON),
     shellPath: tmuxPath,
     shellArgs: ['attach-session', '-t', session]
@@ -209,7 +219,7 @@ async function killSession(): Promise<void> {
 
   // Dispose the matching terminal, if we own one.
   vscode.window.terminals
-    .filter((t) => t.name === terminalName(picked))
+    .filter((t) => sessionOfTerminal(t) === picked)
     .forEach((t) => t.dispose());
 
   void vscode.window.showInformationMessage(`Tmux Reconnect: killed session "${picked}".`);
@@ -283,37 +293,32 @@ async function renameSession(): Promise<void> {
 
   // VS Code offers no reliable API to rename an existing terminal, so re-open the
   // tab instead: close the old one and attach a fresh terminal to the renamed
-  // session. The tmux session persists, so its content is redrawn on re-attach.
-  const terminal =
-    vscode.window.terminals.find((t) => t.name === terminalName(current)) ??
-    (sessionOfTerminal(vscode.window.activeTerminal) === current
-      ? vscode.window.activeTerminal
-      : undefined);
+  // session, reusing the same slot so its Cmd+N shortcut stays put. The tmux
+  // session persists, so its content is redrawn on re-attach.
+  const terminal = vscode.window.terminals.find((t) => sessionOfTerminal(t) === current);
 
   if (terminal) {
     const wasActive = vscode.window.activeTerminal === terminal;
+    const slot = parseTerminal(terminal.name)?.slot ?? firstFreeSlot();
     terminal.dispose();
-    attachTerminal(renamed, tmuxPath).show(!wasActive);
+    attachTerminal(renamed, tmuxPath, slot).show(!wasActive);
   }
 
   void vscode.window.showInformationMessage(`Tmux Reconnect: renamed "${current}" to "${renamed}".`);
 }
 
-/** Focuses the Nth tmux terminal (1-based), in creation order. No-op if absent. */
-function focusTmuxTerminal(index: unknown): void {
-  if (typeof index !== 'number' || index < 1) {
+/** Focuses the tmux terminal whose slot number matches (the "N" shown in its tab). */
+function focusTmuxTerminal(slot: unknown): void {
+  if (typeof slot !== 'number' || slot < 1) {
     return;
   }
-  const tmuxTerminals = vscode.window.terminals.filter((t) => t.name.startsWith(TERMINAL_PREFIX));
-  tmuxTerminals[index - 1]?.show();
+  const target = vscode.window.terminals.find((t) => parseTerminal(t.name)?.slot === slot);
+  target?.show();
 }
 
 /** Returns the tmux session a terminal is attached to, if this extension owns it. */
 function sessionOfTerminal(terminal: vscode.Terminal | undefined): string | undefined {
-  if (terminal && terminal.name.startsWith(TERMINAL_PREFIX)) {
-    return terminal.name.slice(TERMINAL_PREFIX.length);
-  }
-  return undefined;
+  return terminal ? parseTerminal(terminal.name)?.session : undefined;
 }
 
 /**
@@ -321,9 +326,9 @@ function sessionOfTerminal(terminal: vscode.Terminal | undefined): string | unde
  * This survives VS Code's persistent-session restore: on window reload VS Code
  * relaunches tmux attach instead of dropping the user into a bare shell.
  */
-function attachTerminal(session: string, tmuxPath: string): vscode.Terminal {
+function attachTerminal(session: string, tmuxPath: string, slot: number): vscode.Terminal {
   return vscode.window.createTerminal({
-    name: terminalName(session),
+    name: terminalName(slot, session),
     iconPath: new vscode.ThemeIcon(TMUX_ICON),
     shellPath: tmuxPath,
     shellArgs: ['attach-session', '-t', session]
@@ -360,8 +365,35 @@ function readConfig(): { tmuxPath: string } {
   };
 }
 
-function terminalName(session: string): string {
-  return `${TERMINAL_PREFIX}${session}`;
+function terminalName(slot: number, session: string): string {
+  return `tmux ${slot}: ${session}`;
+}
+
+/** Parses one of this extension's terminal names into its slot and session. */
+function parseTerminal(name: string): { slot: number; session: string } | undefined {
+  const match = TERMINAL_RE.exec(name);
+  return match ? { slot: Number(match[1]), session: match[2] } : undefined;
+}
+
+/** All slot numbers currently in use by open tmux terminals. */
+function usedSlots(): Set<number> {
+  const slots = new Set<number>();
+  for (const t of vscode.window.terminals) {
+    const parsed = parseTerminal(t.name);
+    if (parsed) {
+      slots.add(parsed.slot);
+    }
+  }
+  return slots;
+}
+
+/** Smallest 1-based slot not already taken (so Cmd+N stays dense and stable). */
+function firstFreeSlot(used: Set<number> = usedSlots()): number {
+  let n = 1;
+  while (used.has(n)) {
+    n++;
+  }
+  return n;
 }
 
 function asMessage(err: unknown): string {
