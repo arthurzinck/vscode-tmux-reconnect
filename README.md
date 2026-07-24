@@ -22,6 +22,18 @@ Run these from the Command Palette (`Ctrl/Cmd+Shift+P`):
 | `Tmux: Rename session` | Rename the session (defaults to the active terminal's) and its terminal tab together. |
 | `Tmux: Kill session` | Pick a session, confirm, kill it, and close its terminal. |
 
+## Keyboard shortcuts
+
+While a terminal is focused, jump straight to the Nth tmux terminal:
+
+| Shortcut (macOS) | Shortcut (Linux/Windows) | Action |
+| --- | --- | --- |
+| `Cmd+1` … `Cmd+9` | `Alt+1` … `Alt+9` | Focus the 1st … 9th tmux terminal. |
+| `Cmd+0` | `Alt+0` | Focus the 10th tmux terminal. |
+
+The bindings are guarded by `terminalFocus`, so `Cmd+1`…`Cmd+9` keep their usual
+editor-group behaviour when a terminal is not focused.
+
 ## Settings
 
 | Setting | Default | Description |

@@ -19,6 +19,9 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('tmuxReconnect.newSession', () => newSession()),
     vscode.commands.registerCommand('tmuxReconnect.renameSession', () => renameSession()),
     vscode.commands.registerCommand('tmuxReconnect.killSession', () => killSession()),
+    vscode.commands.registerCommand('tmuxReconnect.focusTerminal', (index: unknown) =>
+      focusTmuxTerminal(index)
+    ),
     vscode.window.registerTerminalProfileProvider('tmuxReconnect.newSessionProfile', {
       provideTerminalProfile: () => newSessionProfile()
     })
@@ -294,6 +297,15 @@ async function renameSession(): Promise<void> {
   }
 
   void vscode.window.showInformationMessage(`Tmux Reconnect: renamed "${current}" to "${renamed}".`);
+}
+
+/** Focuses the Nth tmux terminal (1-based), in creation order. No-op if absent. */
+function focusTmuxTerminal(index: unknown): void {
+  if (typeof index !== 'number' || index < 1) {
+    return;
+  }
+  const tmuxTerminals = vscode.window.terminals.filter((t) => t.name.startsWith(TERMINAL_PREFIX));
+  tmuxTerminals[index - 1]?.show();
 }
 
 /** Returns the tmux session a terminal is attached to, if this extension owns it. */
