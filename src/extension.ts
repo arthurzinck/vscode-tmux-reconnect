@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { scheduleUpdateChecks } from './update';
+import { TmuxMonitor, SessionsProvider } from './sessions';
 
 const execAsync = promisify(exec);
 
@@ -22,15 +23,38 @@ export function activate(context: vscode.ExtensionContext): void {
       reconnectAll({ manual: true })
     ),
     vscode.commands.registerCommand('tmuxReconnect.newSession', () => newSession()),
-    vscode.commands.registerCommand('tmuxReconnect.renameSession', () => renameSession()),
-    vscode.commands.registerCommand('tmuxReconnect.killSession', () => killSession()),
+    vscode.commands.registerCommand('tmuxReconnect.renameSession', (arg: unknown) =>
+      renameSession(sessionArg(arg))
+    ),
+    vscode.commands.registerCommand('tmuxReconnect.killSession', (arg: unknown) =>
+      killSession(sessionArg(arg))
+    ),
     vscode.commands.registerCommand('tmuxReconnect.focusTerminal', (index: unknown) =>
       focusTmuxTerminal(index)
+    ),
+    vscode.commands.registerCommand('tmuxReconnect.focusOrAttach', (name: unknown) =>
+      focusOrAttach(name)
     ),
     vscode.window.registerTerminalProfileProvider('tmuxReconnect.newSessionProfile', {
       provideTerminalProfile: () => newSessionProfile()
     })
   );
+
+  // Live sessions sidebar, fed by a background poller.
+  const monitor = new TmuxMonitor(
+    () => readConfig().tmuxPath,
+    () => vscode.workspace.getConfiguration('tmuxReconnect').get<number>('statusRefreshMs', 2000)
+  );
+  context.subscriptions.push(
+    monitor,
+    vscode.window.registerTreeDataProvider('tmuxReconnect.sessions', new SessionsProvider(monitor)),
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration('tmuxReconnect.statusRefreshMs')) {
+        monitor.reschedule();
+      }
+    })
+  );
+  monitor.start();
 
   const config = vscode.workspace.getConfiguration('tmuxReconnect');
   const isRemote = vscode.env.remoteName !== undefined;
@@ -176,29 +200,32 @@ async function promptNewSession(tmuxPath: string): Promise<string | undefined> {
   return session;
 }
 
-/** Lets the user pick a running session, kills it, and closes its terminal. */
-async function killSession(): Promise<void> {
+/** Kills a session (given, or picked) and closes its terminal. */
+async function killSession(preset?: string): Promise<void> {
   const { tmuxPath } = readConfig();
 
-  let sessions: string[];
-  try {
-    sessions = await listSessions(tmuxPath);
-  } catch (err) {
-    void vscode.window.showErrorMessage(`Tmux Reconnect: ${asMessage(err)}`);
-    return;
-  }
-
-  if (sessions.length === 0) {
-    void vscode.window.showInformationMessage('Tmux Reconnect: no tmux sessions to kill.');
-    return;
-  }
-
-  const picked = await vscode.window.showQuickPick(sessions, {
-    placeHolder: 'Select a tmux session to kill',
-    canPickMany: false
-  });
+  let picked = preset;
   if (picked === undefined) {
-    return; // user cancelled
+    let sessions: string[];
+    try {
+      sessions = await listSessions(tmuxPath);
+    } catch (err) {
+      void vscode.window.showErrorMessage(`Tmux Reconnect: ${asMessage(err)}`);
+      return;
+    }
+
+    if (sessions.length === 0) {
+      void vscode.window.showInformationMessage('Tmux Reconnect: no tmux sessions to kill.');
+      return;
+    }
+
+    picked = await vscode.window.showQuickPick(sessions, {
+      placeHolder: 'Select a tmux session to kill',
+      canPickMany: false
+    });
+    if (picked === undefined) {
+      return; // user cancelled
+    }
   }
 
   const confirm = await vscode.window.showWarningMessage(
@@ -230,7 +257,7 @@ async function killSession(): Promise<void> {
  * sync. Targets the active tmux terminal's session when there is one, otherwise
  * asks which session to rename.
  */
-async function renameSession(): Promise<void> {
+async function renameSession(preset?: string): Promise<void> {
   const { tmuxPath } = readConfig();
 
   let sessions: string[];
@@ -246,9 +273,9 @@ async function renameSession(): Promise<void> {
     return;
   }
 
-  // Prefer the session behind the currently focused terminal.
+  // Use the given session, else the focused terminal's, else ask.
   const active = sessionOfTerminal(vscode.window.activeTerminal);
-  let current = active && sessions.includes(active) ? active : undefined;
+  let current = preset ?? (active && sessions.includes(active) ? active : undefined);
   if (current === undefined) {
     current = await vscode.window.showQuickPick(sessions, {
       placeHolder: 'Select a tmux session to rename'
@@ -305,6 +332,30 @@ async function renameSession(): Promise<void> {
   }
 
   void vscode.window.showInformationMessage(`Tmux Reconnect: renamed "${current}" to "${renamed}".`);
+}
+
+/** Focuses the terminal for a session, attaching a new one if none is open yet. */
+function focusOrAttach(name: unknown): void {
+  if (typeof name !== 'string') {
+    return;
+  }
+  const existing = vscode.window.terminals.find((t) => sessionOfTerminal(t) === name);
+  if (existing) {
+    existing.show();
+    return;
+  }
+  attachTerminal(name, readConfig().tmuxPath, firstFreeSlot()).show(false);
+}
+
+/** Extracts a session name from a command argument (a tree item or a raw string). */
+function sessionArg(arg: unknown): string | undefined {
+  if (typeof arg === 'string') {
+    return arg;
+  }
+  if (arg && typeof arg === 'object' && 'name' in arg) {
+    return (arg as { name: string }).name;
+  }
+  return undefined;
 }
 
 /** Focuses the tmux terminal whose slot number matches (the "N" shown in its tab). */

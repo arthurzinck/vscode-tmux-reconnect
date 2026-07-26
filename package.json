@@ -34,24 +34,77 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "tmuxReconnect",
+          "title": "Tmux",
+          "icon": "media/tmux.svg"
+        }
+      ]
+    },
+    "views": {
+      "tmuxReconnect": [
+        {
+          "id": "tmuxReconnect.sessions",
+          "name": "Sessions"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "tmuxReconnect.sessions",
+        "contents": "No tmux sessions running.\n[New session](command:tmuxReconnect.newSession)"
+      }
+    ],
     "commands": [
       {
         "command": "tmuxReconnect.reconnectAll",
-        "title": "Tmux: Reconnect all sessions"
+        "title": "Tmux: Reconnect all sessions",
+        "icon": "$(refresh)"
       },
       {
         "command": "tmuxReconnect.newSession",
-        "title": "Tmux: New session"
+        "title": "Tmux: New session",
+        "icon": "$(add)"
       },
       {
         "command": "tmuxReconnect.renameSession",
-        "title": "Tmux: Rename session"
+        "title": "Tmux: Rename session",
+        "icon": "$(edit)"
       },
       {
         "command": "tmuxReconnect.killSession",
-        "title": "Tmux: Kill session"
+        "title": "Tmux: Kill session",
+        "icon": "$(trash)"
       }
     ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "tmuxReconnect.newSession",
+          "when": "view == tmuxReconnect.sessions",
+          "group": "navigation@1"
+        },
+        {
+          "command": "tmuxReconnect.reconnectAll",
+          "when": "view == tmuxReconnect.sessions",
+          "group": "navigation@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "tmuxReconnect.renameSession",
+          "when": "view == tmuxReconnect.sessions && viewItem == tmuxSession",
+          "group": "inline@1"
+        },
+        {
+          "command": "tmuxReconnect.killSession",
+          "when": "view == tmuxReconnect.sessions && viewItem == tmuxSession",
+          "group": "inline@2"
+        }
+      ]
+    },
     "keybindings": [
       {
         "command": "tmuxReconnect.focusTerminal",
@@ -153,6 +206,12 @@
           "type": "string",
           "default": "tmux",
           "description": "Path to the tmux binary on the host."
+        },
+        "tmuxReconnect.statusRefreshMs": {
+          "type": "number",
+          "default": 2000,
+          "minimum": 0,
+          "description": "How often (ms) to poll tmux for the Sessions sidebar status. 0 disables polling."
         }
       }
     }

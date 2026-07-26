@@ -37,6 +37,16 @@ Ordered by priority.
 - [ ] **DRY** `newSessionProfile` and `attachTerminal` — extract a shared
       `tmuxTerminalOptions(session, tmuxPath)`.
 
+## Differentiation vs herdr
+
+- [~] **Live session status** (working / idle / dead per session). NOTE: VS Code has
+      no API to mutate an existing terminal tab's icon/name/color live, so status is
+      surfaced in the sidebar TreeView (below), not the tab.
+- [~] **Sessions sidebar** (TreeView): live list of sessions with state icon/color,
+      current command, click-to-focus, inline new/rename/kill. Fed by a poller.
+- [ ] **Task-done notifications**: detect a session going working → idle (long command
+      finished) or a pane dying, and raise a VS Code notification. Reuses the poller.
+
 ## Nice to have
 
 - [ ] `Tmux: Check for updates` command for on-demand checks.
