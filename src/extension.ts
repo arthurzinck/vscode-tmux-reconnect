@@ -168,7 +168,8 @@ async function newSessionProfile(): Promise<vscode.TerminalProfile | undefined> 
     name: terminalName(firstFreeSlot(), session),
     iconPath: new vscode.ThemeIcon(TMUX_ICON),
     shellPath: tmuxPath,
-    shellArgs: ['attach-session', '-t', session]
+    shellArgs: ['attach-session', '-t', session],
+    isTransient: true
   });
 }
 
@@ -402,7 +403,10 @@ function attachTerminal(session: string, tmuxPath: string, slot: number): vscode
     name: terminalName(slot, session),
     iconPath: new vscode.ThemeIcon(TMUX_ICON),
     shellPath: tmuxPath,
-    shellArgs: ['attach-session', '-t', session]
+    shellArgs: ['attach-session', '-t', session],
+    // Do NOT let VS Code persist/restore these: on reload it would revive them as
+    // a bare shell (ignoring shellPath) instead of tmux. We re-attach ourselves.
+    isTransient: true
   });
 }
 
