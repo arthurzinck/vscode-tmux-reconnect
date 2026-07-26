@@ -12,7 +12,7 @@ const execAsync = promisify(exec);
  * Cmd/Alt+N shortcut focuses it. Session names never contain ':' (forbidden at
  * creation), so the trailing group is unambiguous.
  */
-const TERMINAL_RE = /^tmux (\d+): (.+)$/s;
+const TERMINAL_RE = /^tmux(?: (\d+))?: (.+)$/s;
 
 /** Codicon id shown on every tmux terminal and the '+' dropdown entry. */
 const TMUX_ICON = 'server-process';
@@ -56,6 +56,18 @@ export function activate(context: vscode.ExtensionContext): void {
   );
   monitor.start();
 
+  // VS Code may restore persisted terminals asynchronously after we reconnect;
+  // debounce a dedupe pass so a late-restored duplicate gets collapsed.
+  let dedupeTimer: NodeJS.Timeout | undefined;
+  context.subscriptions.push(
+    vscode.window.onDidOpenTerminal(() => {
+      if (dedupeTimer) {
+        clearTimeout(dedupeTimer);
+      }
+      dedupeTimer = setTimeout(dedupeTmuxTerminals, 500);
+    })
+  );
+
   const config = vscode.workspace.getConfiguration('tmuxReconnect');
   const isRemote = vscode.env.remoteName !== undefined;
 
@@ -96,10 +108,15 @@ async function reconnectAll({ manual }: ReconnectOptions): Promise<void> {
     return;
   }
 
-  // Skip sessions that already have a terminal open from a previous run.
-  const openSessions = new Set(
-    vscode.window.terminals.map(sessionOfTerminal).filter((s): s is string => s !== undefined)
-  );
+  // A session counts as open only if it already has a numbered terminal. Legacy
+  // (un-numbered) terminals are left to be superseded and cleaned up by dedupe.
+  const openSessions = new Set<string>();
+  for (const t of vscode.window.terminals) {
+    const parsed = parseTerminal(t.name);
+    if (parsed?.slot !== undefined) {
+      openSessions.add(parsed.session);
+    }
+  }
   const used = usedSlots();
 
   let attached = 0;
@@ -112,6 +129,9 @@ async function reconnectAll({ manual }: ReconnectOptions): Promise<void> {
     attachTerminal(session, tmuxPath, slot);
     attached++;
   }
+
+  // Collapse any duplicates (e.g. an old terminal restored alongside a fresh one).
+  dedupeTmuxTerminals();
 
   if (attached > 0) {
     vscode.window.terminals[vscode.window.terminals.length - 1]?.show(true);
@@ -420,22 +440,58 @@ function terminalName(slot: number, session: string): string {
   return `tmux ${slot}: ${session}`;
 }
 
-/** Parses one of this extension's terminal names into its slot and session. */
-function parseTerminal(name: string): { slot: number; session: string } | undefined {
+/**
+ * Parses one of this extension's terminal names into its slot and session.
+ * The slot is undefined for legacy terminals named "tmux: <session>" (no number),
+ * which may be restored from an older version's persistent session.
+ */
+function parseTerminal(name: string): { slot: number | undefined; session: string } | undefined {
   const match = TERMINAL_RE.exec(name);
-  return match ? { slot: Number(match[1]), session: match[2] } : undefined;
+  if (!match) {
+    return undefined;
+  }
+  return { slot: match[1] !== undefined ? Number(match[1]) : undefined, session: match[2] };
 }
 
 /** All slot numbers currently in use by open tmux terminals. */
 function usedSlots(): Set<number> {
   const slots = new Set<number>();
   for (const t of vscode.window.terminals) {
-    const parsed = parseTerminal(t.name);
-    if (parsed) {
-      slots.add(parsed.slot);
+    const slot = parseTerminal(t.name)?.slot;
+    if (slot !== undefined) {
+      slots.add(slot);
     }
   }
   return slots;
+}
+
+/**
+ * Keeps one terminal per tmux session, disposing extras. Prefers a numbered
+ * (slotted) terminal over a legacy one. Safe: closing a duplicate just detaches
+ * that tmux client; the session and its content persist.
+ */
+function dedupeTmuxTerminals(): void {
+  const bySession = new Map<string, vscode.Terminal[]>();
+  for (const t of vscode.window.terminals) {
+    const session = sessionOfTerminal(t);
+    if (session === undefined) {
+      continue;
+    }
+    const group = bySession.get(session) ?? [];
+    group.push(t);
+    bySession.set(session, group);
+  }
+  for (const group of bySession.values()) {
+    if (group.length < 2) {
+      continue;
+    }
+    const keeper = group.find((t) => parseTerminal(t.name)?.slot !== undefined) ?? group[0];
+    for (const t of group) {
+      if (t !== keeper) {
+        t.dispose();
+      }
+    }
+  }
 }
 
 /** Smallest 1-based slot not already taken (so Cmd+N stays dense and stable). */
