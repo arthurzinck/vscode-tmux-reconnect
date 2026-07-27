@@ -155,7 +155,7 @@ export class SessionsProvider implements vscode.TreeDataProvider<TmuxSession> {
     const item = new vscode.TreeItem(session.name);
     item.id = session.name;
     item.contextValue = 'tmuxSession';
-    item.iconPath = new vscode.ThemeIcon('server-process', stateColor(session.state));
+    item.iconPath = stateIcon(session.state);
     item.description = describe(session);
     item.tooltip = new vscode.MarkdownString(
       `**${session.name}** — ${session.state}\n\n` +
@@ -186,13 +186,15 @@ function describe(session: TmuxSession): string {
   return session.attached ? 'idle' : 'idle · detached';
 }
 
-function stateColor(state: SessionState): vscode.ThemeColor | undefined {
+/** Distinct icon (and colour) per state — shape carries the status, not just hue. */
+function stateIcon(state: SessionState): vscode.ThemeIcon {
   switch (state) {
     case 'working':
-      return new vscode.ThemeColor('charts.green');
+      // Spinning icon reads as "busy" at a glance, regardless of theme.
+      return new vscode.ThemeIcon('sync~spin', new vscode.ThemeColor('charts.green'));
     case 'dead':
-      return new vscode.ThemeColor('charts.red');
+      return new vscode.ThemeIcon('error', new vscode.ThemeColor('charts.red'));
     default:
-      return undefined;
+      return new vscode.ThemeIcon('circle-outline');
   }
 }
