@@ -4,8 +4,12 @@ import { promisify } from 'util';
 
 const execFileAsync = promisify(execFile);
 
-/** Commands that mean "just a shell is sitting there", i.e. the session is idle. */
-const SHELLS = new Set(['zsh', '-zsh', 'bash', '-bash', 'sh', '-sh', 'fish', '-fish']);
+/**
+ * A session counts as "working" if it produced output within this many seconds.
+ * Process name is useless here: a TUI agent (claude, vim, …) stays the foreground
+ * process whether it is busy or waiting, so we watch tmux's activity timestamp.
+ */
+const ACTIVITY_WINDOW_S = 3;
 
 export type SessionState = 'working' | 'idle' | 'dead';
 
@@ -80,7 +84,7 @@ async function fetchSessions(tmuxPath: string): Promise<TmuxSession[]> {
     const res = await execFileAsync(tmuxPath, [
       'list-sessions',
       '-F',
-      '#{session_name}\t#{session_attached}\t#{session_windows}'
+      '#{session_name}\t#{session_attached}\t#{session_windows}\t#{session_activity}'
     ]);
     sessionsOut = res.stdout;
   } catch (err) {
@@ -112,18 +116,19 @@ async function fetchSessions(tmuxPath: string): Promise<TmuxSession[]> {
     // Panes are best-effort: without them, sessions still render as idle.
   }
 
+  const nowSeconds = Date.now() / 1000;
   const sessions: TmuxSession[] = [];
   for (const line of sessionsOut.split('\n')) {
     if (!line) {
       continue;
     }
-    const [name, attached, windows] = line.split('\t');
+    const [name, attached, windows, activity] = line.split('\t');
     const info = active.get(name);
     const command = info?.command ?? '';
     let state: SessionState = 'idle';
     if (info?.dead) {
       state = 'dead';
-    } else if (command && !SHELLS.has(command)) {
+    } else if (nowSeconds - Number(activity) < ACTIVITY_WINDOW_S) {
       state = 'working';
     }
     sessions.push({
