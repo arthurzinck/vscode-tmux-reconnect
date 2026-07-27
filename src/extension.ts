@@ -41,13 +41,37 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   // Live sessions sidebar, fed by a background poller.
+  const cfg = () => vscode.workspace.getConfiguration('tmuxReconnect');
   const monitor = new TmuxMonitor(
     () => readConfig().tmuxPath,
-    () => vscode.workspace.getConfiguration('tmuxReconnect').get<number>('statusRefreshMs', 2000)
+    () => cfg().get<number>('statusRefreshMs', 2000),
+    () => compilePatterns(cfg().get<string[]>('needsInputPatterns', DEFAULT_NEEDS_INPUT_PATTERNS))
   );
+  const treeView = vscode.window.createTreeView('tmuxReconnect.sessions', {
+    treeDataProvider: new SessionsProvider(monitor)
+  });
+
+  // React to each poll: badge the view with the waiting count and notify on new ones.
+  let announced = new Set<string>();
   context.subscriptions.push(
     monitor,
-    vscode.window.registerTreeDataProvider('tmuxReconnect.sessions', new SessionsProvider(monitor)),
+    treeView,
+    monitor.onDidChange((sessions) => {
+      const waiting = sessions.filter((s) => s.state === 'needs-input').map((s) => s.name);
+      treeView.badge =
+        waiting.length > 0
+          ? { value: waiting.length, tooltip: `${waiting.length} session(s) need input` }
+          : undefined;
+
+      if (cfg().get<boolean>('notifyNeedsInput', true)) {
+        for (const name of waiting) {
+          if (!announced.has(name)) {
+            notifyNeedsInput(name);
+          }
+        }
+      }
+      announced = new Set(waiting);
+    }),
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('tmuxReconnect.statusRefreshMs')) {
         monitor.reschedule();
@@ -353,6 +377,40 @@ async function renameSession(preset?: string): Promise<void> {
   }
 
   void vscode.window.showInformationMessage(`Tmux Reconnect: renamed "${current}" to "${renamed}".`);
+}
+
+/**
+ * Default heuristics for "this agent is waiting for me". Tuned for Claude Code's
+ * selection prompts; user-overridable via tmuxReconnect.needsInputPatterns.
+ */
+const DEFAULT_NEEDS_INPUT_PATTERNS = [
+  '❯\\s*\\d+\\.',
+  'Do you want to (proceed|make this edit|create|run|continue)',
+  'Would you like to proceed'
+];
+
+/** Compiles pattern strings to case-insensitive regexes, skipping invalid ones. */
+function compilePatterns(patterns: string[]): RegExp[] {
+  const compiled: RegExp[] = [];
+  for (const p of patterns) {
+    try {
+      compiled.push(new RegExp(p, 'i'));
+    } catch {
+      // ignore a malformed user pattern rather than break the whole poll
+    }
+  }
+  return compiled;
+}
+
+/** Warns that a session is waiting for input, offering to jump to it. */
+function notifyNeedsInput(name: string): void {
+  void vscode.window
+    .showWarningMessage(`Tmux: session "${name}" is waiting for your input.`, 'Open')
+    .then((choice) => {
+      if (choice === 'Open') {
+        focusOrAttach(name);
+      }
+    });
 }
 
 /** Focuses the terminal for a session, attaching a new one if none is open yet. */

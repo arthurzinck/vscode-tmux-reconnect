@@ -39,13 +39,17 @@ Ordered by priority.
 
 ## Differentiation vs herdr
 
-- [~] **Live session status** (working / idle / dead per session). NOTE: VS Code has
-      no API to mutate an existing terminal tab's icon/name/color live, so status is
-      surfaced in the sidebar TreeView (below), not the tab.
-- [~] **Sessions sidebar** (TreeView): live list of sessions with state icon/color,
-      current command, click-to-focus, inline new/rename/kill. Fed by a poller.
-- [ ] **Task-done notifications**: detect a session going working → idle (long command
-      finished) or a pane dying, and raise a VS Code notification. Reuses the poller.
+- [x] **Live session status** (needs-input / working / idle / dead per session).
+      Surfaced in the sidebar TreeView (VS Code cannot live-mutate a terminal tab).
+      Working/idle derived from `session_activity`, not the foreground process.
+- [x] **Sessions sidebar** (TreeView): live list with state icon, click-to-focus,
+      inline rename/kill, needs-input floated to the top, count badge on the view.
+- [x] **Needs-input detection + notification**: scan the visible pane for a prompt
+      (configurable regexes), badge the view, and notify with an Open button.
+- [ ] **Peek**: hover/click a session to preview the last N lines of its pane.
+- [ ] **Send input / broadcast**: `send-keys` to a session or to all (approve many).
+- [ ] **Spawn agent with a task**: new session that runs a templated command.
+- [ ] **Go to next waiting agent**: command + shortcut to cycle needs-input sessions.
 
 ## Nice to have
 

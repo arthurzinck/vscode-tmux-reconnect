@@ -11,7 +11,7 @@ const execFileAsync = promisify(execFile);
  */
 const ACTIVITY_WINDOW_S = 3;
 
-export type SessionState = 'working' | 'idle' | 'dead';
+export type SessionState = 'needs-input' | 'working' | 'idle' | 'dead';
 
 export interface TmuxSession {
   name: string;
@@ -34,7 +34,8 @@ export class TmuxMonitor implements vscode.Disposable {
 
   constructor(
     private readonly tmuxPath: () => string,
-    private readonly intervalMs: () => number
+    private readonly intervalMs: () => number,
+    private readonly needsInputPatterns: () => RegExp[]
   ) {}
 
   start(): void {
@@ -61,7 +62,7 @@ export class TmuxMonitor implements vscode.Disposable {
   async tick(): Promise<void> {
     let sessions: TmuxSession[];
     try {
-      sessions = await fetchSessions(this.tmuxPath());
+      sessions = await fetchSessions(this.tmuxPath(), this.needsInputPatterns());
     } catch {
       return; // transient tmux/exec error — keep the last known state
     }
@@ -77,8 +78,8 @@ export class TmuxMonitor implements vscode.Disposable {
   }
 }
 
-/** Reads sessions plus the active pane's command in two tmux calls (no shell). */
-async function fetchSessions(tmuxPath: string): Promise<TmuxSession[]> {
+/** Reads sessions, derives state, and flags those waiting for user input. */
+async function fetchSessions(tmuxPath: string, needsInputPatterns: RegExp[]): Promise<TmuxSession[]> {
   let sessionsOut: string;
   try {
     const res = await execFileAsync(tmuxPath, [
@@ -139,7 +140,34 @@ async function fetchSessions(tmuxPath: string): Promise<TmuxSession[]> {
       state
     });
   }
+
+  // Content-based pass: a live agent (claude, …) shows a prompt when it needs an
+  // answer, but stays the foreground process, so we scan the pane text for it.
+  // This overrides working/idle — "needs my input" is what actually matters.
+  if (needsInputPatterns.length > 0) {
+    await Promise.all(
+      sessions.map(async (session) => {
+        if (session.state === 'dead') {
+          return;
+        }
+        if (await paneNeedsInput(tmuxPath, session.name, needsInputPatterns)) {
+          session.state = 'needs-input';
+        }
+      })
+    );
+  }
+
   return sessions;
+}
+
+/** Captures a session's visible pane and tests it against the needs-input patterns. */
+async function paneNeedsInput(tmuxPath: string, session: string, patterns: RegExp[]): Promise<boolean> {
+  try {
+    const { stdout } = await execFileAsync(tmuxPath, ['capture-pane', '-p', '-t', session]);
+    return patterns.some((re) => re.test(stdout));
+  } catch {
+    return false;
+  }
 }
 
 function isNoServer(err: unknown): boolean {
@@ -177,23 +205,39 @@ export class SessionsProvider implements vscode.TreeDataProvider<TmuxSession> {
   }
 
   getChildren(element?: TmuxSession): TmuxSession[] {
-    return element ? [] : this.monitor.latest;
+    if (element) {
+      return [];
+    }
+    // Sessions waiting for input float to the top; then working, idle, dead.
+    return [...this.monitor.latest].sort((a, b) => stateRank(a.state) - stateRank(b.state));
   }
 }
 
+const STATE_ORDER: SessionState[] = ['needs-input', 'working', 'idle', 'dead'];
+
+function stateRank(state: SessionState): number {
+  return STATE_ORDER.indexOf(state);
+}
+
 function describe(session: TmuxSession): string {
-  if (session.state === 'dead') {
-    return 'dead';
+  switch (session.state) {
+    case 'needs-input':
+      return 'needs input';
+    case 'working':
+      return session.command;
+    case 'dead':
+      return 'dead';
+    default:
+      return session.attached ? 'idle' : 'idle · detached';
   }
-  if (session.state === 'working') {
-    return session.command;
-  }
-  return session.attached ? 'idle' : 'idle · detached';
 }
 
 /** Distinct icon (and colour) per state — shape carries the status, not just hue. */
 function stateIcon(state: SessionState): vscode.ThemeIcon {
   switch (state) {
+    case 'needs-input':
+      // Attention-grabbing: this is the one the user must act on.
+      return new vscode.ThemeIcon('bell-dot', new vscode.ThemeColor('charts.yellow'));
     case 'working':
       // Spinning icon reads as "busy" at a glance, regardless of theme.
       return new vscode.ThemeIcon('sync~spin', new vscode.ThemeColor('charts.green'));

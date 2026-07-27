@@ -212,6 +212,23 @@
           "default": 2000,
           "minimum": 0,
           "description": "How often (ms) to poll tmux for the Sessions sidebar status. 0 disables polling."
+        },
+        "tmuxReconnect.notifyNeedsInput": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a notification when a session starts waiting for your input."
+        },
+        "tmuxReconnect.needsInputPatterns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "❯\\s*\\d+\\.",
+            "Do you want to (proceed|make this edit|create|run|continue)",
+            "Would you like to proceed"
+          ],
+          "description": "Regexes (case-insensitive) tested against each session's visible pane to detect it is waiting for input."
         }
       }
     }

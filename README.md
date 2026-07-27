@@ -13,6 +13,25 @@ dropped SSH connection or a window reload never loses your terminals.
   shortcut focuses it. Sessions that already have a terminal open are skipped, so
   re-running never duplicates them.
 
+## Sessions sidebar
+
+The **Tmux** view (activity bar) lists every session live, with a state icon:
+
+| Icon | State | Meaning |
+| --- | --- | --- |
+| 🔔 `bell-dot` (yellow) | **needs input** | The session is waiting for you (e.g. an agent's approval prompt). Floats to the top. |
+| ⟳ `sync` (green, spinning) | **working** | Produced output in the last few seconds. |
+| ○ `circle-outline` | **idle** | Quiet — finished or waiting silently. |
+| ✖ `error` (red) | **dead** | The pane died. |
+
+Sessions needing input are counted in a **badge** on the Tmux icon, and (unless
+disabled) raise a notification with an **Open** button when they start waiting.
+This makes the extension a control panel for a fleet of terminal AI agents
+(Claude Code, etc.) running in tmux: see at a glance which one needs you.
+
+"Needs input" is detected by scanning the visible pane against
+`tmuxReconnect.needsInputPatterns` — tune these for your tools.
+
 ## Commands
 
 Run these from the Command Palette (`Ctrl/Cmd+Shift+P`):
