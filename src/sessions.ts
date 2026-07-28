@@ -35,7 +35,8 @@ export class TmuxMonitor implements vscode.Disposable {
   constructor(
     private readonly tmuxPath: () => string,
     private readonly intervalMs: () => number,
-    private readonly needsInputPatterns: () => RegExp[]
+    private readonly needsInputPatterns: () => RegExp[],
+    private readonly log: vscode.LogOutputChannel
   ) {}
 
   start(): void {
@@ -60,12 +61,17 @@ export class TmuxMonitor implements vscode.Disposable {
   }
 
   async tick(): Promise<void> {
+    const tmuxPath = this.tmuxPath();
     let sessions: TmuxSession[];
     try {
-      sessions = await fetchSessions(this.tmuxPath(), this.needsInputPatterns());
-    } catch {
-      return; // transient tmux/exec error — keep the last known state
+      sessions = await fetchSessions(tmuxPath, this.needsInputPatterns());
+    } catch (err) {
+      this.log.error(
+        `poll failed (tmuxPath="${tmuxPath}"): ${err instanceof Error ? err.message : String(err)}`
+      );
+      return; // keep the last known state
     }
+    this.log.debug(`poll: ${sessions.map((s) => `${s.name}=${s.state}`).join(', ') || '(none)'}`);
     this.latest = sessions;
     this.emitter.fire(sessions);
   }

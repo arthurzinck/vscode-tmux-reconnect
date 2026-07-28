@@ -42,10 +42,17 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // Live sessions sidebar, fed by a background poller.
   const cfg = () => vscode.workspace.getConfiguration('tmuxReconnect');
+  const log = vscode.window.createOutputChannel('Tmux Reconnect', { log: true });
   const monitor = new TmuxMonitor(
     () => readConfig().tmuxPath,
     () => cfg().get<number>('statusRefreshMs', 2000),
-    () => compilePatterns(cfg().get<string[]>('needsInputPatterns', DEFAULT_NEEDS_INPUT_PATTERNS))
+    () => compilePatterns(cfg().get<string[]>('needsInputPatterns', DEFAULT_NEEDS_INPUT_PATTERNS)),
+    log
+  );
+  context.subscriptions.push(
+    log,
+    vscode.commands.registerCommand('tmuxReconnect.refresh', () => monitor.tick()),
+    vscode.commands.registerCommand('tmuxReconnect.showLogs', () => log.show())
   );
   const treeView = vscode.window.createTreeView('tmuxReconnect.sessions', {
     treeDataProvider: new SessionsProvider(monitor)

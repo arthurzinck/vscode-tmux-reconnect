@@ -77,6 +77,16 @@
         "command": "tmuxReconnect.killSession",
         "title": "Tmux: Kill session",
         "icon": "$(trash)"
+      },
+      {
+        "command": "tmuxReconnect.refresh",
+        "title": "Tmux: Refresh sessions",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "tmuxReconnect.showLogs",
+        "title": "Tmux: Show logs",
+        "icon": "$(output)"
       }
     ],
     "menus": {
@@ -87,9 +97,14 @@
           "group": "navigation@1"
         },
         {
-          "command": "tmuxReconnect.reconnectAll",
+          "command": "tmuxReconnect.refresh",
           "when": "view == tmuxReconnect.sessions",
           "group": "navigation@2"
+        },
+        {
+          "command": "tmuxReconnect.showLogs",
+          "when": "view == tmuxReconnect.sessions",
+          "group": "overflow@1"
         }
       ],
       "view/item/context": [
