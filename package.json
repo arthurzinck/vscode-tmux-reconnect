@@ -244,6 +244,16 @@
             "Would you like to proceed"
           ],
           "description": "Regexes (case-insensitive) tested against each session's visible pane to detect it is waiting for input."
+        },
+        "tmuxReconnect.workingPatterns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "esc to interrupt"
+          ],
+          "description": "Regexes (case-insensitive) tested against each session's visible pane to detect it is actively working. Detected from pane content, so it is correct even when the terminal is not focused."
         }
       }
     }

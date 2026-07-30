@@ -47,6 +47,7 @@ export function activate(context: vscode.ExtensionContext): void {
     () => readConfig().tmuxPath,
     () => cfg().get<number>('statusRefreshMs', 2000),
     () => compilePatterns(cfg().get<string[]>('needsInputPatterns', DEFAULT_NEEDS_INPUT_PATTERNS)),
+    () => compilePatterns(cfg().get<string[]>('workingPatterns', DEFAULT_WORKING_PATTERNS)),
     log
   );
   context.subscriptions.push(
@@ -395,6 +396,13 @@ const DEFAULT_NEEDS_INPUT_PATTERNS = [
   'Do you want to (proceed|make this edit|create|run|continue)',
   'Would you like to proceed'
 ];
+
+/**
+ * Default heuristics for "this agent is actively working". "esc to interrupt" is
+ * shown by Claude Code (and similar TUIs) while a request is in flight — present
+ * in the pane whether or not a client is attached.
+ */
+const DEFAULT_WORKING_PATTERNS = ['esc to interrupt'];
 
 /** Compiles pattern strings to case-insensitive regexes, skipping invalid ones. */
 function compilePatterns(patterns: string[]): RegExp[] {

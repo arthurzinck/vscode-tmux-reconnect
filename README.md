@@ -20,7 +20,7 @@ The **Tmux** view (activity bar) lists every session live, with a state icon:
 | Icon | State | Meaning |
 | --- | --- | --- |
 | 🔔 `bell-dot` (yellow) | **needs input** | The session is waiting for you (e.g. an agent's approval prompt). Floats to the top. |
-| ⟳ `sync` (green, spinning) | **working** | Produced output in the last few seconds. |
+| ⟳ `sync` (green, spinning) | **working** | Actively running (its pane shows a "working" marker, e.g. `esc to interrupt`) — detected even when the terminal isn't focused. |
 | ○ `circle-outline` | **idle** | Quiet — finished or waiting silently. |
 | ✖ `error` (red) | **dead** | The pane died. |
 

@@ -4,13 +4,6 @@ import { promisify } from 'util';
 
 const execFileAsync = promisify(execFile);
 
-/**
- * A session counts as "working" if it produced output within this many seconds.
- * Process name is useless here: a TUI agent (claude, vim, …) stays the foreground
- * process whether it is busy or waiting, so we watch tmux's activity timestamp.
- */
-const ACTIVITY_WINDOW_S = 3;
-
 export type SessionState = 'needs-input' | 'working' | 'idle' | 'dead';
 
 export interface TmuxSession {
@@ -36,6 +29,7 @@ export class TmuxMonitor implements vscode.Disposable {
     private readonly tmuxPath: () => string,
     private readonly intervalMs: () => number,
     private readonly needsInputPatterns: () => RegExp[],
+    private readonly workingPatterns: () => RegExp[],
     private readonly log: vscode.LogOutputChannel
   ) {}
 
@@ -64,7 +58,7 @@ export class TmuxMonitor implements vscode.Disposable {
     const tmuxPath = this.tmuxPath();
     let sessions: TmuxSession[];
     try {
-      sessions = await fetchSessions(tmuxPath, this.needsInputPatterns());
+      sessions = await fetchSessions(tmuxPath, this.needsInputPatterns(), this.workingPatterns());
     } catch (err) {
       this.log.error(
         `poll failed (tmuxPath="${tmuxPath}"): ${err instanceof Error ? err.message : String(err)}`
@@ -84,14 +78,23 @@ export class TmuxMonitor implements vscode.Disposable {
   }
 }
 
-/** Reads sessions, derives state, and flags those waiting for user input. */
-async function fetchSessions(tmuxPath: string, needsInputPatterns: RegExp[]): Promise<TmuxSession[]> {
+/**
+ * Reads sessions and derives each state from its visible pane CONTENT, not from
+ * the process name or tmux activity — both of which are unreliable for a resident
+ * TUI agent. Pane content reflects the true state (working / waiting) whether or
+ * not a client is attached.
+ */
+async function fetchSessions(
+  tmuxPath: string,
+  needsInputPatterns: RegExp[],
+  workingPatterns: RegExp[]
+): Promise<TmuxSession[]> {
   let sessionsOut: string;
   try {
     const res = await execFileAsync(tmuxPath, [
       'list-sessions',
       '-F',
-      '#{session_name}\t#{session_attached}\t#{session_windows}\t#{session_activity}'
+      '#{session_name}\t#{session_attached}\t#{session_windows}'
     ]);
     sessionsOut = res.stdout;
   } catch (err) {
@@ -123,56 +126,50 @@ async function fetchSessions(tmuxPath: string, needsInputPatterns: RegExp[]): Pr
     // Panes are best-effort: without them, sessions still render as idle.
   }
 
-  const nowSeconds = Date.now() / 1000;
   const sessions: TmuxSession[] = [];
   for (const line of sessionsOut.split('\n')) {
     if (!line) {
       continue;
     }
-    const [name, attached, windows, activity] = line.split('\t');
+    const [name, attached, windows] = line.split('\t');
     const info = active.get(name);
-    const command = info?.command ?? '';
-    let state: SessionState = 'idle';
-    if (info?.dead) {
-      state = 'dead';
-    } else if (nowSeconds - Number(activity) < ACTIVITY_WINDOW_S) {
-      state = 'working';
-    }
     sessions.push({
       name,
       attached: attached !== '0',
       windows: Number(windows) || 1,
-      command,
-      state
+      command: info?.command ?? '',
+      state: info?.dead ? 'dead' : 'idle'
     });
   }
 
-  // Content-based pass: a live agent (claude, …) shows a prompt when it needs an
-  // answer, but stays the foreground process, so we scan the pane text for it.
-  // This overrides working/idle — "needs my input" is what actually matters.
-  if (needsInputPatterns.length > 0) {
-    await Promise.all(
-      sessions.map(async (session) => {
-        if (session.state === 'dead') {
-          return;
-        }
-        if (await paneNeedsInput(tmuxPath, session.name, needsInputPatterns)) {
-          session.state = 'needs-input';
-        }
-      })
-    );
-  }
+  // Classify live sessions from their pane text: needs-input wins over working.
+  await Promise.all(
+    sessions.map(async (session) => {
+      if (session.state === 'dead') {
+        return;
+      }
+      const text = await capturePane(tmuxPath, session.name);
+      if (text === undefined) {
+        return; // capture failed — leave as idle
+      }
+      if (needsInputPatterns.some((re) => re.test(text))) {
+        session.state = 'needs-input';
+      } else if (workingPatterns.some((re) => re.test(text))) {
+        session.state = 'working';
+      }
+    })
+  );
 
   return sessions;
 }
 
-/** Captures a session's visible pane and tests it against the needs-input patterns. */
-async function paneNeedsInput(tmuxPath: string, session: string, patterns: RegExp[]): Promise<boolean> {
+/** Returns a session's visible pane text, or undefined on failure. */
+async function capturePane(tmuxPath: string, session: string): Promise<string | undefined> {
   try {
     const { stdout } = await execFileAsync(tmuxPath, ['capture-pane', '-p', '-t', session]);
-    return patterns.some((re) => re.test(stdout));
+    return stdout;
   } catch {
-    return false;
+    return undefined;
   }
 }
 
