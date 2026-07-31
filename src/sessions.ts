@@ -34,6 +34,10 @@ export class TmuxMonitor implements vscode.Disposable {
   ) {}
 
   start(): void {
+    this.log.info(
+      `monitor start: interval=${this.intervalMs()}ms, ` +
+        `needsInputPatterns=${this.needsInputPatterns().length}, workingPatterns=${this.workingPatterns().length}`
+    );
     void this.tick();
     this.schedule();
   }
@@ -65,7 +69,7 @@ export class TmuxMonitor implements vscode.Disposable {
       );
       return; // keep the last known state
     }
-    this.log.debug(`poll: ${sessions.map((s) => `${s.name}=${s.state}`).join(', ') || '(none)'}`);
+    this.log.info(`poll: ${sessions.map((s) => `${s.name}=${s.state}`).join(', ') || '(none)'}`);
     this.latest = sessions;
     this.emitter.fire(sessions);
   }
